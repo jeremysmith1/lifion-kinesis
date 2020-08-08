@@ -4,34 +4,32 @@
  * @module lifion-kinesis
  */
 
-'use strict';
+import projectName from 'project-name';
+import { PassThrough } from 'stream';
+import { generate } from 'short-uuid';
 
-const projectName = require('project-name');
-const { PassThrough } = require('stream');
-const { generate } = require('short-uuid');
-
-const ConsumersManager = require('./consumers-manager');
-const HeartbeatManager = require('./heartbeat-manager');
-const KinesisClient = require('./kinesis-client');
-const S3Client = require('./s3-client');
-const LeaseManager = require('./lease-manager');
-const StateStore = require('./state-store');
-const RecordsModule = require('./records');
-const {
+import ConsumersManager from './consumers-manager';
+import HeartbeatManager from './heartbeat-manager';
+import KinesisClient from './kinesis-client';
+import S3Client from './s3-client';
+import LeaseManager from './lease-manager';
+import StateStore from './state-store';
+import RecordsModule from './records';
+import {
   confirmBucketLifecycleConfiguration,
   confirmBucketTags,
   ensureBucketExists
-} = require('./bucket');
-const { getStats, reportRecordConsumed } = require('./stats');
-const { name: moduleName } = require('../package.json');
+} from './bucket';
+import { getStats, reportRecordConsumed } from './stats';
+import { name as moduleName } from '../package.json';
 
-const {
+import {
   confirmStreamTags,
   ensureStreamEncription,
   ensureStreamExists,
   getEnhancedConsumers,
   registerEnhancedConsumer
-} = require('./stream');
+} from './stream';
 
 const MAX_ENHANCED_CONSUMER_PER_CREATION = 5;
 
@@ -44,7 +42,7 @@ const privateData = new WeakMap();
  * @returns {object} The private data.
  * @private
  */
-function internal(instance) {
+function internal(instance: Record<string, any>): Record<string, any> {
   if (!privateData.has(instance)) privateData.set(instance, {});
   return privateData.get(instance);
 }
@@ -58,7 +56,10 @@ function internal(instance) {
  * @returns {Promise}
  * @private
  */
-async function ensureStreamInitialized(instance, streamName) {
+async function ensureStreamInitialized(
+  instance: Record<string, any>,
+  streamName: undefined
+): Promise<any> {
   const privateProps = internal(instance);
   const { compression, logger, s3, useS3ForLargeItems } = privateProps;
 
@@ -114,7 +115,7 @@ async function ensureStreamInitialized(instance, streamName) {
  * @returns {Promise}
  * @private
  */
-async function setUpEnhancedConsumers(instance) {
+async function setUpEnhancedConsumers(instance: Record<string, any>): Promise<any> {
   const { client, logger, maxEnhancedConsumers, stateStore, streamArn, streamName } = internal(
     instance
   );
@@ -125,7 +126,7 @@ async function setUpEnhancedConsumers(instance) {
   const enhancedConsumersCount = Object.keys(enhancedConsumers).length;
 
   // Register new enhanced fan-out consumers until reaching the maximum allowed.
-  const newEnhancedConsumerNames = [];
+  const newEnhancedConsumerNames: string[] = [];
   for (let i = enhancedConsumersCount; i < maxEnhancedConsumers; i += 1) {
     newEnhancedConsumerNames.push(`${moduleName}-${generate()}`);
   }
@@ -142,7 +143,7 @@ async function setUpEnhancedConsumers(instance) {
 
   for (const batch of newEnhancedConsumerBatches) {
     await Promise.all(
-      batch.map((consumerName) =>
+      batch.map((consumerName: any) =>
         registerEnhancedConsumer({ client, consumerName, logger, streamArn })
       )
     );
@@ -187,7 +188,12 @@ function parsePutRecordsResult({ EncryptionType, Records }) {
     }))
   };
 }
-
+type Options = {
+  compression: string,
+  consumerGroup: string,
+  createStreamIfNeeded: boolean,
+  dynamoDb: Records<string,any>
+  }
 /**
  * A [pass-through stream]{@link external:PassThrough} class specialization implementing a consumer
  * of Kinesis Data Streams using the [AWS SDK for JavaScript]{@link external:AwsJsSdk}. Incoming
@@ -197,6 +203,7 @@ function parsePutRecordsResult({ EncryptionType, Records }) {
  * @augments external:PassThrough
  */
 class Kinesis extends PassThrough {
+
   /**
    * Initializes a new instance of the Kinesis client.
    *
@@ -276,7 +283,7 @@ class Kinesis extends PassThrough {
    * @param {number} [options.leaseAcquisitionInterval=20000] - The interval in milliseconds for how often to
    *        attempt lease acquisitions.
    */
-  constructor(options = {}) {
+  constructor(options:Options = {}){
     super({ objectMode: true });
 
     const {
@@ -405,7 +412,7 @@ class Kinesis extends PassThrough {
     privateProps.heartbeatManager = heartbeatManager;
     await heartbeatManager.start();
 
-    privateProps.pushToStream = (err, ...args) => {
+    privateProps.pushToStream = (err: any, ...args: any) => {
       if (err) this.emit('error', err);
       else {
         this.push(...args);
@@ -421,7 +428,24 @@ class Kinesis extends PassThrough {
     privateProps.leaseManager = leaseManager;
     await leaseManager.start();
 
-    const getStatsTimeout = () => {
+  /**
+   * Writes multiple data records into a stream in a single call.
+   *
+   * @param {object} params - The parameters.
+   * @param {Array<object>} params.records - The records associated with the request.
+   * @param {*} params.records[].data - The record data.
+   * @param {string} [params.records[].explicitHashKey] - The hash value used to explicitly
+   *        determine the shard the data record is assigned to by overriding the partition key hash.
+   * @param {string} [params.records[].partitionKey] - Determines which shard in the stream the
+   *        data record is assigned to. If omitted, it will be calculated based on a SHA-1 hash
+   *        of the data.
+   * @param {string} [params.streamName] - If provided, the record will be put into the specified
+   *        stream instead of the stream name provided during the consumer instantiation.
+   * @fulfil {Object} - The de-serialized data returned from the request.
+   * @reject {Error} - On any unexpected error while writing to the stream.
+   * @returns {Promise}
+   */
+  async    const getStatsTimeout = () => {
       this.emit('stats', getStats(streamName));
       privateProps.getStatsIntervalId = setTimeout(getStatsTimeout, statsInterval);
     };
@@ -453,7 +477,13 @@ class Kinesis extends PassThrough {
    * @param {string} [params.partitionKey] - Determines which shard in the stream the data record
    *        is assigned to. If omitted, it will be calculated based on a SHA-1 hash of the data.
    * @param {string} [params.sequenceNumberForOrdering] - Set this to the sequence number obtained
-   *        from the last put record operation to guarantee strictly increasing sequence numbers,
+  /**
+   * Returns the aggregated statistics of all the instances of the client.
+   *
+   * @returns {object} An object with the statistics.
+   */
+  static getStats()   *        from the last put record operation to guarantee strictly increasing sequence numbers,
+    return getStats();
    *        for puts from the same client and to the same partition key. If omitted, records are
    *        coarsely ordered based on arrival time.
    * @param {string} [params.streamName] - If provided, the record will be put into the specified
@@ -490,57 +520,10 @@ class Kinesis extends PassThrough {
     }
   }
 
-  /**
-   * List the shards of a stream.
-   *
-   * @param {object} params - The parameters.
-   * @param {string} [params.streamName] - If provided, the method will list the shards of the
-   *        specific stream instead of the stream name provided during the consumer instantiation.
-   * @fulfil {Object} - The de-serialized data returned from the request.
-   * @reject {Error} - On any unexpected error while writing to the stream.
-   * @returns {Promise}
-   */
-  async listShards(params = {}) {
-    const privateProps = internal(this);
-    const { client } = privateProps;
-    const { streamName } = params;
-
-    const awsParams = {
-      StreamName: streamName || privateProps.streamName
-    };
-
-    const { Shards } = await client.listShards(awsParams);
-    return Shards.map(
-      ({
-        HashKeyRange: { EndingHashKey, StartingHashKey },
-        SequenceNumberRange: { StartingSequenceNumber },
-        ShardId
-      }) => ({
-        hashKeyRange: { endingHashKey: EndingHashKey, startingHashKey: StartingHashKey },
-        sequenceNumberRange: { startingSequenceNumber: StartingSequenceNumber },
-        shardId: ShardId
-      })
-    );
+ {
   }
 
-  /**
-   * Writes multiple data records into a stream in a single call.
-   *
-   * @param {object} params - The parameters.
-   * @param {Array<object>} params.records - The records associated with the request.
-   * @param {*} params.records[].data - The record data.
-   * @param {string} [params.records[].explicitHashKey] - The hash value used to explicitly
-   *        determine the shard the data record is assigned to by overriding the partition key hash.
-   * @param {string} [params.records[].partitionKey] - Determines which shard in the stream the
-   *        data record is assigned to. If omitted, it will be calculated based on a SHA-1 hash
-   *        of the data.
-   * @param {string} [params.streamName] - If provided, the record will be put into the specified
-   *        stream instead of the stream name provided during the consumer instantiation.
-   * @fulfil {Object} - The de-serialized data returned from the request.
-   * @reject {Error} - On any unexpected error while writing to the stream.
-   * @returns {Promise}
-   */
-  async putRecords(params = {}) {
+ putRecords(params = {}) {
     const privateProps = internal(this);
     const { client, createStreamIfNeeded } = privateProps;
     const { records, streamName } = params;
@@ -569,49 +552,11 @@ class Kinesis extends PassThrough {
     }
   }
 
-  /**
-   * Returns statistics for the instance of the client.
-   *
-   * @returns {object} An object with the statistics.
-   */
-  getStats() {
-    const { streamName } = internal(this);
-    return getStats(streamName);
+ {
   }
 
-  /**
-   * Returns the aggregated statistics of all the instances of the client.
-   *
-   * @returns {object} An object with the statistics.
-   */
-  static getStats() {
-    return getStats();
+ {
   }
 }
 
-/**
- * @external AwsJsSdk
- * @see https://docs.aws.amazon.com/AWSJavaScriptSDK/latest
- */
 
-/**
- * @external AwsJsSdkKinesis
- * @see https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/Kinesis.html#constructor-property
- */
-
-/**
- * @external AwsJsSdkDynamoDb
- * @see https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/DynamoDB.html#constructor-property
- */
-
-/**
- * @external AwsJsSdkS3
- * @see https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/S3.html#constructor-property
- */
-
-/**
- * @external PassThrough
- * @see https://nodejs.org/dist/latest-v10.x/docs/api/stream.html#stream_class_stream_passthrough
- */
-
-module.exports = Kinesis;

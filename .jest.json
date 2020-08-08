@@ -12,5 +12,6 @@
     }
   },
   "rootDir": "lib",
-  "testEnvironment": "node"
+  "testEnvironment": "node",
+  "preset": "ts-jest"
 }

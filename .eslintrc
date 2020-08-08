@@ -20,6 +20,22 @@
       "rules": {
         "max-classes-per-file": ["error", 3]
       }
+    },
+    {
+      "files": ["*.ts"],
+      "parser": "@typescript-eslint/parser",
+      "plugins": ["@typescript-eslint"],
+      "extends": [
+        "eslint:recommended",
+        "plugin:@typescript-eslint/eslint-recommended",
+        "plugin:@typescript-eslint/recommended"
+      ],
+      "rules": {
+        "prettier/prettier": "warn",
+        "node/no-unsupported-features/es-syntax": "off",
+        "@typescript-eslint/no-explicit-any": "off"
+        
+      }
     }
   ]
 }
